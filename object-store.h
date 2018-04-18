@@ -1,6 +1,8 @@
 #ifndef OBJECT_STORE_H
 #define OBJECT_STORE_H
 
+#include "oidmap.h"
+
 struct alternate_object_database {
 	struct alternate_object_database *next;
 
@@ -94,6 +96,12 @@ struct raw_object_store {
 
 	struct alternate_object_database *alt_odb_list;
 	struct alternate_object_database **alt_odb_tail;
+
+	/*
+	 * Objects that should be substituted by other objects
+	 * (see git-replace(1)).
+	 */
+	struct oidmap *replace_map;
 
 	/*
 	 * private data

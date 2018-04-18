@@ -2550,7 +2550,7 @@ static int safe_append(const char *filename, const char *fmt, ...)
 
 static int do_label(const char *name, int len)
 {
-	struct ref_store *refs = get_main_ref_store();
+	struct ref_store *refs = get_main_ref_store(the_repository);
 	struct ref_transaction *transaction;
 	struct strbuf ref_name = STRBUF_INIT, err = STRBUF_INIT;
 	struct strbuf msg = STRBUF_INIT;
