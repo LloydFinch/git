@@ -164,6 +164,21 @@ $ git p4 submit --shelve
 $ git p4 submit --update-shelve 1234 --update-shelve 2345
 ----
 
+
+Unshelve
+~~~~~~~~
+Unshelving will take a shelved P4 changelist, and produce the equivalent git commit
+in the branch refs/remotes/p4/unshelved/<changelist>.
+
+The git commit is created relative to the current p4/master branch, so if this
+branch is behind Perforce itself, it may include more changes than you expected.
+
+----
+$ git p4 sync
+$ git p4 unshelve 12345
+$ git show refs/remotes/p4/unshelved/12345
+----
+
 OPTIONS
 -------
 
@@ -336,6 +351,13 @@ These options can be used to modify 'git p4 rebase' behavior.
 
 --import-labels::
 	Import p4 labels.
+
+Unshelve options
+~~~~~~~~~~~~~~~~
+
+--origin::
+    Sets the git refspec against which the shelved P4 changelist is compared.
+    Defaults to p4/master.
 
 DEPOT PATH SYNTAX
 -----------------
