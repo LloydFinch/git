@@ -77,6 +77,49 @@ in the commit graph. We can treat these commits as having "infinite"
 generation number and walk until reaching commits with known generation
 number.
 
+We use the macro GENERATION_NUMBER_INFINITY = 0xFFFFFFFF to mark commits not
+in the commit-graph file. If a commit-graph file was written by a version
+of Git that did not compute generation numbers, then those commits will
+have generation number represented by the macro GENERATION_NUMBER_ZERO = 0.
+
+Since the commit-graph file is closed under reachability, we can guarantee
+the following weaker condition on all commits:
+
+    If A and B are commits with generation numbers N amd M, respectively,
+    and N < M, then A cannot reach B.
+
+Note how the strict inequality differs from the inequality when we have
+fully-computed generation numbers. Using strict inequality may result in
+walking a few extra commits, but the simplicity in dealing with commits
+with generation number *_INFINITY or *_ZERO is valuable.
+
+Here is a diagram to visualize the shape of the full commit graph, and
+how different generation numbers relate:
+
+    +-----------------------------------------+
+    | GENERATION_NUMBER_INFINITY = 0xFFFFFFFF |
+    +-----------------------------------------+
+	    |            |      ^
+	    |            |      |
+	    |            +------+
+	    |         [gen(A) = gen(B)]
+	    V
+    +-------------------------------------+
+    | 0 < commit->generation < 0x40000000 |
+    +-------------------------------------+
+	    |            |      ^
+	    |            |      |
+	    |            +------+
+	    |        [gen(A) > gen(B)]
+	    V
+    +-------------------------------------+
+    | GENERATION_NUMBER_ZERO = 0          |
+    +-------------------------------------+
+			 |      ^
+			 |      |
+			 +------+
+		     [gen(A) = gen(B)]
+
 Design Details
 --------------
 
@@ -98,17 +141,12 @@ Future Work
 - The 'commit-graph' subcommand does not have a "verify" mode that is
   necessary for integration with fsck.
 
-- The file format includes room for precomputed generation numbers. These
-  are not currently computed, so all generation numbers will be marked as
-  0 (or "uncomputed"). A later patch will include this calculation.
-
 - After computing and storing generation numbers, we must make graph
   walks aware of generation numbers to gain the performance benefits they
   enable. This will mostly be accomplished by swapping a commit-date-ordered
   priority queue with one ordered by generation number. The following
-  operations are important candidates:
+  operation is an important candidate:
 
-    - paint_down_to_common()
     - 'log --topo-order'
 
 - Currently, parse_commit_gently() requires filling in the root tree

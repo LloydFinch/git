@@ -265,6 +265,8 @@ static int fill_commit_in_graph(struct commit *item, struct commit_graph *g, uin
 	date_low = get_be32(commit_data + g->hash_len + 12);
 	item->date = (timestamp_t)((date_high << 32) | date_low);
 
+	item->generation = get_be32(commit_data + g->hash_len + 8) >> 2;
+
 	pptr = &item->parents;
 
 	edge_value = get_be32(commit_data + g->hash_len);
@@ -440,6 +442,13 @@ static void write_graph_chunk_data(struct hashfile *f, int hash_len,
 		else
 			packedDate[0] = 0;
 
+		if ((*list)->generation != GENERATION_NUMBER_INFINITY) {
+			if ((*list)->generation > GENERATION_NUMBER_MAX)
+				die("generation number %u is too large to store in commit-graph",
+				    (*list)->generation);
+			packedDate[0] |= htonl((*list)->generation << 2);
+		}
+
 		packedDate[1] = htonl((*list)->date);
 		hashwrite(f, packedDate, 8);
 
@@ -572,6 +581,43 @@ static void close_reachable(struct packed_oid_list *oids)
 	}
 }
 
+static void compute_generation_numbers(struct commit** commits,
+				       int nr_commits)
+{
+	int i;
+	struct commit_list *list = NULL;
+
+	for (i = 0; i < nr_commits; i++) {
+		if (commits[i]->generation != GENERATION_NUMBER_INFINITY &&
+		    commits[i]->generation != GENERATION_NUMBER_ZERO)
+			continue;
+
+		commit_list_insert(commits[i], &list);
+		while (list) {
+			struct commit *current = list->item;
+			struct commit_list *parent;
+			int all_parents_computed = 1;
+			uint32_t max_generation = 0;
+
+			for (parent = current->parents; parent; parent = parent->next) {
+				if (parent->item->generation == GENERATION_NUMBER_INFINITY ||
+				    parent->item->generation == GENERATION_NUMBER_ZERO) {
+					all_parents_computed = 0;
+					commit_list_insert(parent->item, &list);
+					break;
+				} else if (parent->item->generation > max_generation) {
+					max_generation = parent->item->generation;
+				}
+			}
+
+			if (all_parents_computed) {
+				current->generation = max_generation + 1;
+				pop_commit(&list);
+			}
+		}
+	}
+}
+
 void write_commit_graph(const char *obj_dir,
 			const char **pack_indexes,
 			int nr_packs,
@@ -694,6 +740,8 @@ void write_commit_graph(const char *obj_dir,
 
 	if (commits.nr >= GRAPH_PARENT_MISSING)
 		die(_("too many commits to write graph"));
+
+	compute_generation_numbers(commits.list, commits.nr);
 
 	graph_name = get_commit_graph_filename(obj_dir);
 	fd = hold_lock_file_for_update(&lk, graph_name, 0);
