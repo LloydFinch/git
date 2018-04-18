@@ -84,10 +84,11 @@ test_completion ()
 	then
 		printf '%s\n' "$2" >expected
 	else
-		sed -e 's/Z$//' >expected
+		sed -e 's/Z$//' |sort >expected
 	fi &&
 	run_completion "$1" &&
-	test_cmp expected out
+	sort out >out_sorted &&
+	test_cmp expected out_sorted
 }
 
 # Test __gitcomp.
@@ -399,6 +400,46 @@ test_expect_success '__gitdir - remote as argument' '
 	) &&
 	test_cmp expected "$actual"
 '
+
+
+test_expect_success '__git_dequote - plain unquoted word' '
+	__git_dequote unquoted-word &&
+	verbose test unquoted-word = "$dequoted_word"
+'
+
+# input:    b\a\c\k\'\\\"s\l\a\s\h\es
+# expected: back'\"slashes
+test_expect_success '__git_dequote - backslash escaped' '
+	__git_dequote "b\a\c\k\\'\''\\\\\\\"s\l\a\s\h\es" &&
+	verbose test "back'\''\\\"slashes" = "$dequoted_word"
+'
+
+# input:    sin'gle\' '"quo'ted
+# expected: single\ "quoted
+test_expect_success '__git_dequote - single quoted' '
+	__git_dequote "'"sin'gle\\\\' '\\\"quo'ted"'" &&
+	verbose test '\''single\ "quoted'\'' = "$dequoted_word"
+'
+
+# input:    dou"ble\\" "\"\quot"ed
+# expected: double\ "\quoted
+test_expect_success '__git_dequote - double quoted' '
+	__git_dequote '\''dou"ble\\" "\"\quot"ed'\'' &&
+	verbose test '\''double\ "\quoted'\'' = "$dequoted_word"
+'
+
+# input: 'open single quote
+test_expect_success '__git_dequote - open single quote' '
+	__git_dequote "'\''open single quote" &&
+	verbose test "open single quote" = "$dequoted_word"
+'
+
+# input: "open double quote
+test_expect_success '__git_dequote - open double quote' '
+	__git_dequote "\"open double quote" &&
+	verbose test "open double quote" = "$dequoted_word"
+'
+
 
 test_expect_success '__gitcomp_direct - puts everything into COMPREPLY as-is' '
 	sed -e "s/Z$//g" >expected <<-EOF &&
@@ -1365,6 +1406,7 @@ test_expect_success 'complete files' '
 
 	echo "expected" > .gitignore &&
 	echo "out" >> .gitignore &&
+	echo "out_sorted" >> .gitignore &&
 
 	git add .gitignore &&
 	test_completion "git commit " ".gitignore" &&
@@ -1426,6 +1468,113 @@ test_expect_success 'complete files' '
 	touch momified &&
 	test_completion "git add mom" "momified"
 '
+
+# The next tests only care about how the completion script deals with
+# unusual characters in path names.  By defining a custom completion
+# function to list untracked files they won't be influenced by future
+# changes of the completion functions of real git commands, and we
+# don't have to bother with adding files to the index in these tests.
+_git_test_path_comp ()
+{
+	__git_complete_index_file --others
+}
+
+test_expect_success 'complete files - escaped characters on cmdline' '
+	test_when_finished "rm -rf \"New|Dir\"" &&
+	mkdir "New|Dir" &&
+	>"New|Dir/New&File.c" &&
+
+	test_completion "git test-path-comp N" \
+			"New|Dir" &&	# Bash will turn this into "New\|Dir/"
+	test_completion "git test-path-comp New\\|D" \
+			"New|Dir" &&
+	test_completion "git test-path-comp New\\|Dir/N" \
+			"New|Dir/New&File.c" &&	# Bash will turn this into
+						# "New\|Dir/New\&File.c "
+	test_completion "git test-path-comp New\\|Dir/New\\&F" \
+			"New|Dir/New&File.c"
+'
+
+test_expect_success 'complete files - quoted characters on cmdline' '
+	test_when_finished "rm -r \"New(Dir\"" &&
+	mkdir "New(Dir" &&
+	>"New(Dir/New)File.c" &&
+
+	# Testing with an opening but without a corresponding closing
+	# double quote is important.
+	test_completion "git test-path-comp \"New(D" "New(Dir" &&
+	test_completion "git test-path-comp \"New(Dir/New)F" \
+			"New(Dir/New)File.c"
+'
+
+test_expect_success 'complete files - UTF-8 in ls-files output' '
+	test_when_finished "rm -r árvíztűrő" &&
+	mkdir árvíztűrő &&
+	>"árvíztűrő/Сайн яваарай" &&
+
+	test_completion "git test-path-comp á" "árvíztűrő" &&
+	test_completion "git test-path-comp árvíztűrő/С" \
+			"árvíztűrő/Сайн яваарай"
+'
+
+# Testing with a path containing a backslash is important.
+if test_have_prereq !MINGW &&
+   mkdir 'New\Dir' 2>/dev/null &&
+   touch 'New\Dir/New"File.c' 2>/dev/null
+then
+	test_set_prereq FUNNYNAMES_BS_DQ
+else
+	say "Your filesystem does not allow \\ and \" in filenames."
+	rm -rf 'New\Dir'
+fi
+test_expect_success FUNNYNAMES_BS_DQ \
+    'complete files - C-style escapes in ls-files output' '
+	test_when_finished "rm -r \"New\\\\Dir\"" &&
+
+	test_completion "git test-path-comp N" "New\\Dir" &&
+	test_completion "git test-path-comp New\\\\D" "New\\Dir" &&
+	test_completion "git test-path-comp New\\\\Dir/N" \
+			"New\\Dir/New\"File.c" &&
+	test_completion "git test-path-comp New\\\\Dir/New\\\"F" \
+			"New\\Dir/New\"File.c"
+'
+
+if test_have_prereq !MINGW &&
+   mkdir $'New\034Special\035Dir' 2>/dev/null &&
+   touch $'New\034Special\035Dir/New\036Special\037File' 2>/dev/null
+then
+	test_set_prereq FUNNYNAMES_SEPARATORS
+else
+	say 'Your filesystem does not allow special separator characters (FS, GS, RS, US) in filenames.'
+	rm -rf $'New\034Special\035Dir'
+fi
+test_expect_success FUNNYNAMES_SEPARATORS \
+    'complete files - \nnn-escaped control characters in ls-files output' '
+	test_when_finished "rm -r '$'New\034Special\035Dir''" &&
+
+	# Note: these will be literal separator characters on the cmdline.
+	test_completion "git test-path-comp N" "'$'New\034Special\035Dir''" &&
+	test_completion "git test-path-comp '$'New\034S''" \
+			"'$'New\034Special\035Dir''" &&
+	test_completion "git test-path-comp '$'New\034Special\035Dir/''" \
+			"'$'New\034Special\035Dir/New\036Special\037File''" &&
+	test_completion "git test-path-comp '$'New\034Special\035Dir/New\036S''" \
+			"'$'New\034Special\035Dir/New\036Special\037File''"
+'
+
+test_expect_success FUNNYNAMES_BS_DQ \
+    'complete files - removing repeated quoted path components' '
+	test_when_finished rm -rf NewDir &&
+	mkdir NewDir &&    # A dirname which in itself would not be quoted ...
+	>NewDir/0-file &&
+	>NewDir/1\"file && # ... but here the file makes the dirname quoted ...
+	>NewDir/2-file &&
+	>NewDir/3\"file && # ... and here, too.
+
+	# Still, we should only list it once.
+	test_completion "git test-path-comp New" "NewDir"
+'
+
 
 test_expect_success "completion uses <cmd> completion for alias: !sh -c 'git <cmd> ...'" '
 	test_config alias.co "!sh -c '"'"'git checkout ...'"'"'" &&
