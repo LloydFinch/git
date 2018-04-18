@@ -139,8 +139,6 @@ struct untracked_cache {
 	int gitignore_invalidated;
 	int dir_invalidated;
 	int dir_opened;
-	/* fsmonitor invalidation data */
-	unsigned int use_fsmonitor : 1;
 };
 
 struct dir_struct {

@@ -18,8 +18,8 @@
 #include "utf8.h"
 #include "varint.h"
 #include "ewah/ewok.h"
-#include "fsmonitor.h"
 #include "submodule-config.h"
+#include "fsexcludes.h"
 
 /*
  * Tells read_directory_recursive how a file or directory should be treated.
@@ -1103,6 +1103,12 @@ int is_excluded_from_list(const char *pathname,
 			  struct exclude_list *el, struct index_state *istate)
 {
 	struct exclude *exclude;
+
+	if (*dtype == DT_UNKNOWN)
+		*dtype = get_dtype(NULL, istate, pathname, pathlen);
+	if (fsexcludes_is_excluded_from(istate, pathname, pathlen, *dtype) > 0)
+		return 1;
+
 	exclude = last_exclude_matching_from_list(pathname, pathlen, basename,
 						  dtype, el, istate);
 	if (exclude)
@@ -1318,8 +1324,15 @@ struct exclude *last_exclude_matching(struct dir_struct *dir,
 int is_excluded(struct dir_struct *dir, struct index_state *istate,
 		const char *pathname, int *dtype_p)
 {
-	struct exclude *exclude =
-		last_exclude_matching(dir, istate, pathname, dtype_p);
+	struct exclude *exclude;
+	int pathlen = strlen(pathname);
+
+	if (*dtype_p == DT_UNKNOWN)
+		*dtype_p = get_dtype(NULL, istate, pathname, pathlen);
+	if (fsexcludes_is_excluded_from(istate, pathname, pathlen, *dtype_p) > 0)
+		return 1;
+
+	exclude = last_exclude_matching(dir, istate, pathname, dtype_p);
 	if (exclude)
 		return exclude->flags & EXC_FLAG_NEGATIVE ? 0 : 1;
 	return 0;
@@ -1672,6 +1685,9 @@ static enum path_treatment treat_one_path(struct dir_struct *dir,
 	if (dtype != DT_DIR && has_path_in_index)
 		return path_none;
 
+	if (fsexcludes_is_excluded_from(istate, path->buf, path->len, dtype) > 0)
+		return path_excluded;
+
 	/*
 	 * When we are looking at a directory P in the working tree,
 	 * there are three cases:
@@ -1811,20 +1827,14 @@ static int valid_cached_dir(struct dir_struct *dir,
 	if (!untracked)
 		return 0;
 
-	/*
-	 * With fsmonitor, we can trust the untracked cache's valid field.
-	 */
-	refresh_fsmonitor(istate);
-	if (!(dir->untracked->use_fsmonitor && untracked->valid)) {
-		if (lstat(path->len ? path->buf : ".", &st)) {
-			memset(&untracked->stat_data, 0, sizeof(untracked->stat_data));
-			return 0;
-		}
-		if (!untracked->valid ||
-			match_stat_data_racy(istate, &untracked->stat_data, &st)) {
-			fill_stat_data(&untracked->stat_data, &st);
-			return 0;
-		}
+	if (stat(path->len ? path->buf : ".", &st)) {
+		memset(&untracked->stat_data, 0, sizeof(untracked->stat_data));
+		return 0;
+	}
+	if (!untracked->valid ||
+	    match_stat_data_racy(istate, &untracked->stat_data, &st)) {
+		fill_stat_data(&untracked->stat_data, &st);
+		return 0;
 	}
 
 	if (untracked->check_only != !!check_only)
@@ -2012,6 +2022,9 @@ static enum path_treatment read_directory_recursive(struct dir_struct *dir,
 		/* add the path to the appropriate result list */
 		switch (state) {
 		case path_excluded:
+			if (fsexcludes_is_excluded_from(istate, path.buf, path.len,
+					get_dtype(cdir.de, istate, path.buf, path.len)) > 0)
+				break;
 			if (dir->flags & DIR_SHOW_IGNORED)
 				dir_add_name(dir, istate, path.buf, path.len);
 			else if ((dir->flags & DIR_SHOW_IGNORED_TOO) ||

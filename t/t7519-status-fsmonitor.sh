@@ -225,8 +225,7 @@ test_expect_success '*only* files returned by the integration script get flagged
 # Ensure commands that call refresh_index() to move the index back in time
 # properly invalidate the fsmonitor cache
 test_expect_success 'refresh_index() invalidates fsmonitor cache' '
-	write_script .git/hooks/fsmonitor-test<<-\EOF &&
-	EOF
+	write_integration_script &&
 	clean_repo &&
 	dirty_repo &&
 	git add . &&
@@ -275,7 +274,7 @@ do
 		'
 
 		# Make sure it's actually skipping the check for modified and untracked
-		# (if enabled) files unless it is told about them.
+		# files unless it is told about them.
 		test_expect_success "status doesn't detect unreported modifications" '
 			write_script .git/hooks/fsmonitor-test<<-\EOF &&
 			:>marker
@@ -288,14 +287,7 @@ do
 			git status >actual &&
 			test_path_is_file marker &&
 			test_i18ngrep ! "Changes not staged for commit:" actual &&
-			if test $uc_val = true
-			then
-				test_i18ngrep ! "Untracked files:" actual
-			fi &&
-			if test $uc_val = false
-			then
-				test_i18ngrep "Untracked files:" actual
-			fi &&
+			test_i18ngrep ! "Untracked files:" actual &&
 			rm -f marker
 		'
 	done

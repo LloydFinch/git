@@ -2,6 +2,7 @@
 #include "config.h"
 #include "dir.h"
 #include "ewah/ewok.h"
+#include "fsexcludes.h"
 #include "fsmonitor.h"
 #include "run-command.h"
 #include "strbuf.h"
@@ -125,12 +126,7 @@ static void fsmonitor_refresh_callback(struct index_state *istate, const char *n
 		ce->ce_flags &= ~CE_FSMONITOR_VALID;
 	}
 
-	/*
-	 * Mark the untracked cache dirty even if it wasn't found in the index
-	 * as it could be a new untracked file.
-	 */
 	trace_printf_key(&trace_fsmonitor, "fsmonitor_refresh_callback '%s'", name);
-	untracked_cache_invalidate_path(istate, name, 0);
 }
 
 void refresh_fsmonitor(struct index_state *istate)
@@ -188,10 +184,8 @@ void refresh_fsmonitor(struct index_state *istate)
 		/* If we're going to check every file, ensure we save the results */
 		istate->cache_changed |= FSMONITOR_CHANGED;
 
-		if (istate->untracked)
-			istate->untracked->use_fsmonitor = 0;
 	}
-	strbuf_release(&query_result);
+	fsexcludes_init(&query_result);
 
 	/* Now that we've updated istate, save the last_update time */
 	istate->fsmonitor_last_update = last_update;
@@ -228,12 +222,6 @@ void add_fsmonitor(struct index_state *istate)
 		for (i = 0; i < istate->cache_nr; i++)
 			istate->cache[i]->ce_flags &= ~CE_FSMONITOR_VALID;
 
-		/* reset the untracked cache */
-		if (istate->untracked) {
-			add_untracked_cache(istate);
-			istate->untracked->use_fsmonitor = 1;
-		}
-
 		/* Update the fsmonitor state */
 		refresh_fsmonitor(istate);
 	}
@@ -262,10 +250,6 @@ void tweak_fsmonitor(struct index_state *istate)
 
 			/* Mark all previously saved entries as dirty */
 			ewah_each_bit(istate->fsmonitor_dirty, fsmonitor_ewah_callback, istate);
-
-			/* Now mark the untracked cache for fsmonitor usage */
-			if (istate->untracked)
-				istate->untracked->use_fsmonitor = 1;
 		}
 
 		ewah_free(istate->fsmonitor_dirty);
