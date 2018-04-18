@@ -570,6 +570,15 @@ static int edit_branch_description(const char *branch_name)
 	return 0;
 }
 
+static int deprecated_reflog_option_cb(const struct option *opt,
+				       const char *arg, int unset)
+{
+	warning("the '-l' alias for '--create-reflog' is deprecated;");
+	warning("it will be removed in a future version of Git");
+	*(int *)opt->value = !unset;
+	return 0;
+}
+
 int cmd_branch(int argc, const char **argv, const char *prefix)
 {
 	int delete = 0, rename = 0, copy = 0, force = 0, list = 0;
@@ -612,7 +621,13 @@ int cmd_branch(int argc, const char **argv, const char *prefix)
 		OPT_BIT('c', "copy", &copy, N_("copy a branch and its reflog"), 1),
 		OPT_BIT('C', NULL, &copy, N_("copy a branch, even if target exists"), 2),
 		OPT_BOOL(0, "list", &list, N_("list branch names")),
-		OPT_BOOL('l', "create-reflog", &reflog, N_("create the branch's reflog")),
+		OPT_BOOL(0, "create-reflog", &reflog, N_("create the branch's reflog")),
+		{
+			OPTION_CALLBACK, 'l', NULL, &reflog, NULL,
+			N_("deprecated synonym for --create-reflog"),
+			PARSE_OPT_NOARG | PARSE_OPT_HIDDEN,
+			deprecated_reflog_option_cb
+		},
 		OPT_BOOL(0, "edit-description", &edit_description,
 			 N_("edit the description for the branch")),
 		OPT__FORCE(&force, N_("force creation, move/rename, deletion"), PARSE_OPT_NOCOMPLETE),
