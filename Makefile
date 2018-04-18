@@ -740,6 +740,7 @@ TEST_PROGRAMS_NEED_X += test-json-writer
 TEST_PROGRAMS_NEED_X += test-line-buffer
 TEST_PROGRAMS_NEED_X += test-parse-options
 TEST_PROGRAMS_NEED_X += test-pkt-line
+TEST_PROGRAMS_NEED_X += test-print-larger-than-ssize
 TEST_PROGRAMS_NEED_X += test-svn-fe
 TEST_PROGRAMS_NEED_X += test-tool
 
