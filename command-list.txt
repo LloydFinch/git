@@ -150,3 +150,11 @@ gitweb                                  ancillaryinterrogators
 git-whatchanged                         ancillaryinterrogators
 git-worktree                            mainporcelain
 git-write-tree                          plumbingmanipulators
+gitattributes                           guide
+giteveryday                             guide
+gitglossary                             guide
+gitignore                               guide
+gitmodules                              guide
+gitrevisions                            guide
+gittutorial                             guide
+gitworkflows                            guide
